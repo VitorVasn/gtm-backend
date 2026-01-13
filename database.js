@@ -8,8 +8,8 @@ db.serialize(() => {
       posto TEXT,
       nome TEXT,
       funcao TEXT,
-      horas REAL DEFAULT 0,
-      pontos INTEGER DEFAULT 0
+      pontos INTEGER DEFAULT 0,
+      horas REAL DEFAULT 0
     )
   `);
 
