@@ -1,24 +1,24 @@
 const express = require("express");
 const cors = require("cors");
+const app = express();
+require("./database"); // Conexão com SQLite
 
-// Inicializa a conexão com o banco
-require("./database");
-
-// Importa as rotas
 const gtmRoutes = require("./routes/gtmRoutes");
 
-const app = express();
+// ===== Configurações =====
+app.use(cors({ origin: "*" })); // libera para qualquer frontend
+app.use(express.json());
 
-// Middlewares
-app.use(cors({ origin: "*" })); // Permite acesso de qualquer domínio
-app.use(express.json()); // Para receber JSON no body
+// ===== Rota raiz para teste =====
+app.get("/", (req, res) => {
+  res.json({ sucesso: true, mensagem: "Backend GTM funcionando!" });
+});
 
-// Rotas
+// ===== Rotas da API =====
 app.use("/api", gtmRoutes);
 
-// Porta
+// ===== Inicialização do servidor =====
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, () => {
   console.log(`🔥 GTM Backend rodando na porta ${PORT}`);
 });
