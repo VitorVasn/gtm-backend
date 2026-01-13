@@ -2,22 +2,25 @@ const express = require("express");
 const router = express.Router();
 const db = require("../database");
 
+// ====================== FUNÇÃO DATA BR ======================
+function dataBrasil() {
+  return new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
+
 // ====================== CADASTRO DE GTM ======================
 router.post("/gtm", (req, res) => {
   const { passaporte, posto, nome, funcao } = req.body;
 
-  // Validação básica
   if (!passaporte || !posto || !nome || !funcao) {
     return res.status(400).json({ sucesso: false, mensagem: "Preencha todos os campos!" });
   }
 
-  // Inserir no banco
   db.run(
     "INSERT INTO gtms (passaporte, posto, nome, funcao, pontos, horas) VALUES (?, ?, ?, ?, 0, 0)",
     [passaporte, posto, nome, funcao],
     function (err) {
       if (err) {
-        if (err.message.includes("UNIQUE") || err.message.includes("PRIMARY KEY")) {
+        if (err.message.includes("UNIQUE")) {
           return res.status(400).json({ sucesso: false, mensagem: "GTM já existe!" });
         }
         return res.status(500).json({ sucesso: false, mensagem: err.message });
@@ -53,7 +56,7 @@ router.post("/finalizar", (req, res) => {
   );
 });
 
-// ====================== REGISTRAR QRT ======================
+// ====================== QRT ======================
 router.post("/pontuar", (req, res) => {
   const { passaporte, pontos } = req.body;
 
@@ -71,59 +74,59 @@ router.post("/pontuar", (req, res) => {
   );
 });
 
-// ====================== REGISTRAR ACOMPANHAMENTO ======================
+// ====================== ACOMPANHAMENTO ======================
 router.post("/registrar-acomp", (req, res) => {
   const { passaporte, status } = req.body;
+
   if (!passaporte || !status) {
     return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
   }
 
-  const pontos = status === "concluido" ? 3 : 1; // concluído vale mais
+  const pontos = status === "concluido" ? 3 : 1;
 
-  db.serialize(() => {
-    db.run(
-      "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
-      [pontos, passaporte]
-    );
+  db.get("SELECT nome FROM gtms WHERE passaporte = ?", [passaporte], (err, gtm) => {
+    if (err || !gtm) {
+      return res.status(404).json({ sucesso: false, mensagem: "GTM não encontrado" });
+    }
 
-    const texto = `Acompanhamento ${status.toUpperCase()}`;
+    const texto = `${gtm.nome} realizou acompanhamento (${status})`;
+    const data = dataBrasil();
 
-    db.run(
-      "INSERT INTO avisos (texto, data) VALUES (?, ?)",
-      [texto, new Date().toLocaleString()],
-      function (err) {
+    db.serialize(() => {
+      db.run("UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?", [pontos, passaporte]);
+      db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [texto, data], function (err) {
         if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
         res.json({ sucesso: true, mensagem: "Acompanhamento registrado e pontuado!" });
-      }
-    );
+      });
+    });
   });
 });
 
-// ====================== REGISTRAR PRISÃO ======================
+// ====================== PRISÃO ======================
 router.post("/registrar-prisao", (req, res) => {
   const { passaporteGTM, nomePreso, passaportePreso } = req.body;
+
   if (!passaporteGTM || !nomePreso || !passaportePreso) {
     return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
   }
 
-  const pontos = 5; // <<< PONTOS POR PRISÃO (ajuste como quiser)
+  const pontos = 5;
 
-  db.serialize(() => {
-    db.run(
-      "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
-      [pontos, passaporteGTM]
-    );
+  db.get("SELECT nome FROM gtms WHERE passaporte = ?", [passaporteGTM], (err, gtm) => {
+    if (err || !gtm) {
+      return res.status(404).json({ sucesso: false, mensagem: "GTM não encontrado" });
+    }
 
-    const texto = `Prisão efetuada: ${nomePreso} (ID: ${passaportePreso})`;
+    const texto = `${gtm.nome} efetuou prisão de ${nomePreso} (ID: ${passaportePreso})`;
+    const data = dataBrasil();
 
-    db.run(
-      "INSERT INTO avisos (texto, data) VALUES (?, ?)",
-      [texto, new Date().toLocaleString()],
-      function (err) {
+    db.serialize(() => {
+      db.run("UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?", [pontos, passaporteGTM]);
+      db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [texto, data], function (err) {
         if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
         res.json({ sucesso: true, mensagem: "Prisão registrada e pontuada!" });
-      }
-    );
+      });
+    });
   });
 });
 
@@ -135,9 +138,10 @@ router.post("/zerar", (req, res) => {
   });
 });
 
-// ====================== EXONERAR GTM ======================
+// ====================== EXONERAR ======================
 router.delete("/gtm/:passaporte", (req, res) => {
   const { passaporte } = req.params;
+
   db.run("DELETE FROM gtms WHERE passaporte = ?", [passaporte], function (err) {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
     res.json({ sucesso: true, mensagem: "GTM exonerado!" });
@@ -145,84 +149,56 @@ router.delete("/gtm/:passaporte", (req, res) => {
 });
 
 // ====================== AVISOS ======================
-
-// LISTAR AVISOS
 router.get("/avisos", (req, res) => {
   db.all("SELECT * FROM avisos ORDER BY id DESC", [], (err, rows) => {
-    if (err) {
-      console.error("Erro ao buscar avisos:", err.message);
-      return res.status(500).json({ sucesso: false, mensagem: err.message });
-    }
+    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
     res.json(rows);
   });
 });
 
-
-// CRIAR AVISO
 router.post("/avisos", (req, res) => {
-  const { texto } = req.body;
+  const { texto, passaporte } = req.body;
 
-  if (!texto || texto.trim() === "") {
-    return res.status(400).json({ sucesso: false, mensagem: "Digite o texto do aviso!" });
+  if (!texto || !passaporte) {
+    return res.status(400).json({ sucesso: false, mensagem: "Dados inválidos!" });
   }
 
-  const data = new Date().toISOString(); // 🔥 FORMATO CORRETO
-
-  db.run(
-    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
-    [texto, data],
-    function (err) {
-      if (err) {
-        console.error("Erro ao inserir aviso:", err.message);
-        return res.status(500).json({ sucesso: false, mensagem: err.message });
-      }
-
-      res.json({
-        sucesso: true,
-        mensagem: "Aviso enviado!",
-        id: this.lastID
-      });
+  db.get("SELECT nome FROM gtms WHERE passaporte = ?", [passaporte], (err, gtm) => {
+    if (err || !gtm) {
+      return res.status(404).json({ sucesso: false, mensagem: "GTM não encontrado" });
     }
-  );
+
+    const textoFinal = `${gtm.nome}: ${texto}`;
+    const data = dataBrasil();
+
+    db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [textoFinal, data], function (err) {
+      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+      res.json({ sucesso: true, mensagem: "Aviso enviado!" });
+    });
+  });
 });
 
-
-// APAGAR AVISO
 router.delete("/avisos/:id", (req, res) => {
   const { id } = req.params;
 
   db.run("DELETE FROM avisos WHERE id = ?", [id], function (err) {
-    if (err) {
-      console.error("Erro ao apagar aviso:", err.message);
-      return res.status(500).json({ sucesso: false, mensagem: err.message });
-    }
-
+    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
     res.json({ sucesso: true, mensagem: "Aviso apagado!" });
   });
 });
 
-
-// EDITAR AVISO
 router.put("/avisos/:id", (req, res) => {
   const { id } = req.params;
   const { texto } = req.body;
 
-  if (!texto || texto.trim() === "") {
+  if (!texto) {
     return res.status(400).json({ sucesso: false, mensagem: "Texto inválido!" });
   }
 
-  db.run(
-    "UPDATE avisos SET texto = ? WHERE id = ?",
-    [texto, id],
-    function (err) {
-      if (err) {
-        console.error("Erro ao editar aviso:", err.message);
-        return res.status(500).json({ sucesso: false, mensagem: err.message });
-      }
-
-      res.json({ sucesso: true, mensagem: "Aviso editado!" });
-    }
-  );
+  db.run("UPDATE avisos SET texto = ? WHERE id = ?", [texto, id], function (err) {
+    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+    res.json({ sucesso: true, mensagem: "Aviso editado!" });
+  });
 });
 
 module.exports = router;
