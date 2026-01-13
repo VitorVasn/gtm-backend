@@ -145,29 +145,84 @@ router.delete("/gtm/:passaporte", (req, res) => {
 });
 
 // ====================== AVISOS ======================
+
+// LISTAR AVISOS
 router.get("/avisos", (req, res) => {
   db.all("SELECT * FROM avisos ORDER BY id DESC", [], (err, rows) => {
-    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+    if (err) {
+      console.error("Erro ao buscar avisos:", err.message);
+      return res.status(500).json({ sucesso: false, mensagem: err.message });
+    }
     res.json(rows);
   });
 });
 
+
+// CRIAR AVISO
 router.post("/avisos", (req, res) => {
   const { texto } = req.body;
-  if (!texto) return res.status(400).json({ sucesso: false, mensagem: "Digite o texto do aviso!" });
 
-  const data = new Date().toLocaleString();
-  db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [texto, data], function (err) {
-    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-    res.json({ sucesso: true, mensagem: "Aviso enviado!" });
+  if (!texto || texto.trim() === "") {
+    return res.status(400).json({ sucesso: false, mensagem: "Digite o texto do aviso!" });
+  }
+
+  const data = new Date().toISOString(); // 🔥 FORMATO CORRETO
+
+  db.run(
+    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
+    [texto, data],
+    function (err) {
+      if (err) {
+        console.error("Erro ao inserir aviso:", err.message);
+        return res.status(500).json({ sucesso: false, mensagem: err.message });
+      }
+
+      res.json({
+        sucesso: true,
+        mensagem: "Aviso enviado!",
+        id: this.lastID
+      });
+    }
+  );
+});
+
+
+// APAGAR AVISO
+router.delete("/avisos/:id", (req, res) => {
+  const { id } = req.params;
+
+  db.run("DELETE FROM avisos WHERE id = ?", [id], function (err) {
+    if (err) {
+      console.error("Erro ao apagar aviso:", err.message);
+      return res.status(500).json({ sucesso: false, mensagem: err.message });
+    }
+
+    res.json({ sucesso: true, mensagem: "Aviso apagado!" });
   });
 });
 
-router.delete("/avisos/:id", (req, res) => {
-  db.run("DELETE FROM avisos WHERE id = ?", [req.params.id], function (err) {
-    if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-    res.json({ sucesso: true, mensagem: "Aviso apagado!" });
-  });
+
+// EDITAR AVISO
+router.put("/avisos/:id", (req, res) => {
+  const { id } = req.params;
+  const { texto } = req.body;
+
+  if (!texto || texto.trim() === "") {
+    return res.status(400).json({ sucesso: false, mensagem: "Texto inválido!" });
+  }
+
+  db.run(
+    "UPDATE avisos SET texto = ? WHERE id = ?",
+    [texto, id],
+    function (err) {
+      if (err) {
+        console.error("Erro ao editar aviso:", err.message);
+        return res.status(500).json({ sucesso: false, mensagem: err.message });
+      }
+
+      res.json({ sucesso: true, mensagem: "Aviso editado!" });
+    }
+  );
 });
 
 module.exports = router;
