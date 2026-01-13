@@ -2,23 +2,32 @@ const express = require("express");
 const router = express.Router();
 const db = require("../database");
 
-// ------------------- CADASTRO -------------------
+// ====================== CADASTRO DE GTM ======================
 router.post("/gtm", (req, res) => {
   const { passaporte, posto, nome, funcao } = req.body;
-  if (!passaporte || !posto || !nome || !funcao)
-    return res.status(400).json({ sucesso: false, mensagem: "Preencha todos os campos!" });
 
+  // Validação básica
+  if (!passaporte || !posto || !nome || !funcao) {
+    return res.status(400).json({ sucesso: false, mensagem: "Preencha todos os campos!" });
+  }
+
+  // Inserir no banco
   db.run(
     "INSERT INTO gtms (passaporte, posto, nome, funcao, pontos, horas) VALUES (?, ?, ?, ?, 0, 0)",
     [passaporte, posto, nome, funcao],
     function (err) {
-      if (err) return res.status(400).json({ sucesso: false, mensagem: "GTM já existe!" });
+      if (err) {
+        if (err.message.includes("UNIQUE") || err.message.includes("PRIMARY KEY")) {
+          return res.status(400).json({ sucesso: false, mensagem: "GTM já existe!" });
+        }
+        return res.status(500).json({ sucesso: false, mensagem: err.message });
+      }
       res.json({ sucesso: true, mensagem: "GTM cadastrado com sucesso!" });
     }
   );
 });
 
-// ------------------- LISTAR GTMS -------------------
+// ====================== LISTAR GTMS ======================
 router.get("/gtms", (req, res) => {
   db.all("SELECT * FROM gtms ORDER BY pontos DESC, horas DESC", [], (err, rows) => {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
@@ -26,12 +35,17 @@ router.get("/gtms", (req, res) => {
   });
 });
 
-// ------------------- FINALIZAR SERVIÇO -------------------
-router.post("/finalizar-servico", (req, res) => {
-  const { passaporte, horas } = req.body;
+// ====================== FINALIZAR SERVIÇO ======================
+router.post("/finalizar", (req, res) => {
+  const { passaporte, duracaoHoras } = req.body;
+
+  if (!passaporte || duracaoHoras == null) {
+    return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+  }
+
   db.run(
     "UPDATE gtms SET horas = horas + ? WHERE passaporte = ?",
-    [horas, passaporte],
+    [duracaoHoras, passaporte],
     function (err) {
       if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
       res.json({ sucesso: true, mensagem: "Serviço finalizado!" });
@@ -39,37 +53,78 @@ router.post("/finalizar-servico", (req, res) => {
   );
 });
 
-// ------------------- REGISTRAR PONTOS -------------------
-router.post("/registrar-qrt", (req, res) => {
-  const { passaporte, quantidade } = req.body;
+// ====================== REGISTRAR QRT ======================
+router.post("/pontuar", (req, res) => {
+  const { passaporte, pontos } = req.body;
+
+  if (!passaporte || pontos == null) {
+    return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+  }
+
   db.run(
     "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
-    [quantidade, passaporte],
+    [pontos, passaporte],
     function (err) {
       if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-      res.json({ sucesso: true, mensagem: `${quantidade} pontos registrados!` });
+      res.json({ sucesso: true, mensagem: `${pontos} pontos registrados!` });
     }
   );
 });
 
-// ------------------- ZERAR RANKING -------------------
-router.post("/zerar-ranking", (req, res) => {
+// ====================== REGISTRAR ACOMPANHAMENTO ======================
+router.post("/registrar-acomp", (req, res) => {
+  const { passaporte, status } = req.body;
+  if (!passaporte || !status) return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+
+  // Aqui você pode criar uma tabela separada de acompanhamentos se quiser
+  db.run(
+    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
+    [`Acompanhamento de ${passaporte}: ${status}`, new Date().toLocaleString()],
+    function (err) {
+      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+      res.json({ sucesso: true, mensagem: "Acompanhamento registrado!" });
+    }
+  );
+});
+
+// ====================== REGISTRAR PRISÃO ======================
+router.post("/registrar-prisao", (req, res) => {
+  const { passaporteGTM, nomePreso, passaportePreso, qtd } = req.body;
+  if (!passaporteGTM || !nomePreso || !passaportePreso || qtd == null) {
+    return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+  }
+
+  db.run(
+    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
+    [
+      `GTM ${passaporteGTM} prendeu ${nomePreso} (ID: ${passaportePreso}) - Qtd: ${qtd}`,
+      new Date().toLocaleString()
+    ],
+    function (err) {
+      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+      res.json({ sucesso: true, mensagem: "Prisão registrada!" });
+    }
+  );
+});
+
+// ====================== ZERAR RANKING ======================
+router.post("/zerar", (req, res) => {
   db.run("UPDATE gtms SET pontos = 0, horas = 0", [], function (err) {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
     res.json({ sucesso: true, mensagem: "Ranking zerado!" });
   });
 });
 
-// ------------------- EXONERAR -------------------
-router.post("/exonerar", (req, res) => {
-  const { passaporte } = req.body;
+// ====================== EXONERAR GTM ======================
+router.delete("/gtm/:passaporte", (req, res) => {
+  const { passaporte } = req.params;
   db.run("DELETE FROM gtms WHERE passaporte = ?", [passaporte], function (err) {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
     res.json({ sucesso: true, mensagem: "GTM exonerado!" });
   });
 });
 
-// ------------------- AVISOS -------------------
+// ====================== AVISOS ======================
 router.get("/avisos", (req, res) => {
   db.all("SELECT * FROM avisos ORDER BY id DESC", [], (err, rows) => {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
@@ -79,6 +134,8 @@ router.get("/avisos", (req, res) => {
 
 router.post("/avisos", (req, res) => {
   const { texto } = req.body;
+  if (!texto) return res.status(400).json({ sucesso: false, mensagem: "Digite o texto do aviso!" });
+
   const data = new Date().toLocaleString();
   db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [texto, data], function (err) {
     if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
