@@ -156,6 +156,26 @@ router.delete("/gtm/:passaporte", (req, res) => {
   });
 });
 
+// ====================== ALTERAR PATENTE ======================
+router.put("/gtm/:passaporte/patente", (req, res) => {
+  const { passaporte } = req.params;
+  const { novaPatente } = req.body;
+
+  if (!novaPatente) {
+    return res.status(400).json({ sucesso: false, mensagem: "Patente inválida!" });
+  }
+
+  db.run(
+    "UPDATE gtms SET posto = ? WHERE passaporte = ?",
+    [novaPatente, passaporte],
+    function (err) {
+      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+      res.json({ sucesso: true, mensagem: "Patente alterada com sucesso!" });
+    }
+  );
+});
+
+
 // ====================== AVISOS ======================
 router.get("/avisos", (req, res) => {
   db.all("SELECT * FROM avisos ORDER BY id DESC", [], (err, rows) => {
