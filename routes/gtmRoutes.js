@@ -64,14 +64,22 @@ router.post("/pontuar", (req, res) => {
     return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
   }
 
-  db.run(
-    "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
-    [pontos, passaporte],
-    function (err) {
-      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-      res.json({ sucesso: true, mensagem: `${pontos} pontos registrados!` });
+  db.get("SELECT nome FROM gtms WHERE passaporte = ?", [passaporte], (err, gtm) => {
+    if (err || !gtm) {
+      return res.status(404).json({ sucesso: false, mensagem: "GTM não encontrado" });
     }
-  );
+
+    const texto = `${gtm.nome} recebeu ${pontos} pontos no QRT`;
+    const data = dataBrasil();
+
+    db.serialize(() => {
+      db.run("UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?", [pontos, passaporte]);
+      db.run("INSERT INTO avisos (texto, data) VALUES (?, ?)", [texto, data], function (err) {
+        if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+        res.json({ sucesso: true, mensagem: `${pontos} pontos registrados e aviso gerado!` });
+      });
+    });
+  });
 });
 
 // ====================== ACOMPANHAMENTO ======================
