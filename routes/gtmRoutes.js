@@ -74,37 +74,57 @@ router.post("/pontuar", (req, res) => {
 // ====================== REGISTRAR ACOMPANHAMENTO ======================
 router.post("/registrar-acomp", (req, res) => {
   const { passaporte, status } = req.body;
-  if (!passaporte || !status) return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+  if (!passaporte || !status) {
+    return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
+  }
 
-  // Aqui você pode criar uma tabela separada de acompanhamentos se quiser
-  db.run(
-    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
-    [`Acompanhamento de ${passaporte}: ${status}`, new Date().toLocaleString()],
-    function (err) {
-      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-      res.json({ sucesso: true, mensagem: "Acompanhamento registrado!" });
-    }
-  );
+  const pontos = status === "concluido" ? 3 : 1; // concluído vale mais
+
+  db.serialize(() => {
+    db.run(
+      "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
+      [pontos, passaporte]
+    );
+
+    const texto = `Acompanhamento ${status.toUpperCase()}`;
+
+    db.run(
+      "INSERT INTO avisos (texto, data) VALUES (?, ?)",
+      [texto, new Date().toLocaleString()],
+      function (err) {
+        if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+        res.json({ sucesso: true, mensagem: "Acompanhamento registrado e pontuado!" });
+      }
+    );
+  });
 });
 
 // ====================== REGISTRAR PRISÃO ======================
 router.post("/registrar-prisao", (req, res) => {
-  const { passaporteGTM, nomePreso, passaportePreso, qtd } = req.body;
-  if (!passaporteGTM || !nomePreso || !passaportePreso || qtd == null) {
+  const { passaporteGTM, nomePreso, passaportePreso } = req.body;
+  if (!passaporteGTM || !nomePreso || !passaportePreso) {
     return res.status(400).json({ sucesso: false, mensagem: "Parâmetros inválidos!" });
   }
 
-  db.run(
-    "INSERT INTO avisos (texto, data) VALUES (?, ?)",
-    [
-      `GTM ${passaporteGTM} prendeu ${nomePreso} (ID: ${passaportePreso}) - Qtd: ${qtd}`,
-      new Date().toLocaleString()
-    ],
-    function (err) {
-      if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
-      res.json({ sucesso: true, mensagem: "Prisão registrada!" });
-    }
-  );
+  const pontos = 5; // <<< PONTOS POR PRISÃO (ajuste como quiser)
+
+  db.serialize(() => {
+    db.run(
+      "UPDATE gtms SET pontos = pontos + ? WHERE passaporte = ?",
+      [pontos, passaporteGTM]
+    );
+
+    const texto = `Prisão efetuada: ${nomePreso} (ID: ${passaportePreso})`;
+
+    db.run(
+      "INSERT INTO avisos (texto, data) VALUES (?, ?)",
+      [texto, new Date().toLocaleString()],
+      function (err) {
+        if (err) return res.status(500).json({ sucesso: false, mensagem: err.message });
+        res.json({ sucesso: true, mensagem: "Prisão registrada e pontuada!" });
+      }
+    );
+  });
 });
 
 // ====================== ZERAR RANKING ======================
